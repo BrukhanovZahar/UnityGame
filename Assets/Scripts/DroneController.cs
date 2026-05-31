@@ -35,6 +35,8 @@ public class DroneController : MonoBehaviour
     [SerializeField] private float attackDamage = 5f;
     [SerializeField] private float attackInterval = 1.5f;
     [SerializeField] private string attackSoundKey;
+    [SerializeField] private Transform muzzle;
+    [SerializeField] private string projectileKey;
     [SerializeField] private UnityEvent onAttack;
 
     [Header("Refs")]
@@ -158,7 +160,7 @@ public class DroneController : MonoBehaviour
         if (engaged && Time.time - lastAttackTime >= attackInterval)
         {
             lastAttackTime = Time.time;
-            Attack();
+            Attack(center);
         }
     }
 
@@ -188,11 +190,27 @@ public class DroneController : MonoBehaviour
         }
     }
 
-    private void Attack()
+    private void Attack(Vector3 aimPos)
     {
         if (targetLife != null) targetLife.TakeDamage(attackDamage);
         if (!string.IsNullOrEmpty(attackSoundKey)) DJ.Play(attackSoundKey);
+        FireProjectile(aimPos);
         onAttack.Invoke();
+    }
+
+    private void FireProjectile(Vector3 aimPos)
+    {
+        if (string.IsNullOrEmpty(projectileKey)) return;
+
+        Transform from = muzzle != null ? muzzle : transform;
+        if (ObjectPool.TryGet(projectileKey, out PooledObject projectile))
+        {
+            projectile.transform.position = from.position;
+            Vector3 dir = aimPos - from.position;
+            if (dir.sqrMagnitude > 0.0001f)
+                projectile.transform.rotation = Quaternion.LookRotation(dir);
+            projectile.Action();
+        }
     }
 
     private void Die()

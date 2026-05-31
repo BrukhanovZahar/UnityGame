@@ -37,7 +37,7 @@ public class Bullet : PooledObjectOnTimer
 			return;
 
 		if (collision.gameObject.TryGetComponent<Life>(out Life target))
-			target.TakeDamage(damage);
+			target.TakeDamage(damage + UpgradeManager.BulletDamageBonus);
 
 		Explode();
 	}

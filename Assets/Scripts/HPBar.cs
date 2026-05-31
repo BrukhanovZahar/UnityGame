@@ -17,6 +17,7 @@ public class HPBar : MonoBehaviour
 
 	private void SetValue(float value)
 	{
+		_slider.maxValue = _life.MaxHP;
 		_slider.value = value;
 	}
 }

@@ -38,6 +38,11 @@ public class Gun : MonoBehaviour
 		}
 	}
 
+	public void MultiplyCooldown(float multiplier)
+	{
+		shootCooldown *= multiplier;
+	}
+
 	private void Shoot()
 	{
 		if(ObjectPool.TryGet(bulletKey, out PooledObject bullet))
