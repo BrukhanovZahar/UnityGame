@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Events;
@@ -5,27 +6,32 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Life))]
 public class DroneController : MonoBehaviour
 {
+    private static readonly List<DroneController> All = new List<DroneController>();
+
     [Header("Target")]
-    [SerializeField] private Transform target;          // object with Life that takes damage
+    [SerializeField] private Transform target;
     [SerializeField] private string targetTag = "Base";
-    [SerializeField] private Transform aimOverride;     // point to orbit; parent it to the moving base
+    [SerializeField] private Transform aimOverride;
     [SerializeField] private string aimTag = "BaseAim";
 
     [Header("Flight")]
     [SerializeField] private float moveSpeed = 24f;
     [SerializeField] private float turnSpeed = 6f;
 
-    [Header("Orbit (relative to the planet, so it works under 3-axis spin)")]
-    [SerializeField] private float standoffHeight = 16f;        // how far out from the base, along the planet's outward normal
-    [SerializeField] private float orbitRadius = 7f;            // small fast loop radius
-    [SerializeField] private float orbitDegreesPerSecond = 80f; // speed of the small loop
-    [SerializeField] private float wanderRadius = 13f;          // the small loop itself drifts around this larger radius
-    [SerializeField] private float wanderDegreesPerSecond = 22f;// speed of that slow drift
-    [SerializeField] private float surfaceClearance = 5f;       // min distance kept from the asteroid surface
-    [SerializeField] private float shieldClearance = 5f;        // min distance kept from the shield dome (covers the model's nose)
+    [Header("Orbit")]
+    [SerializeField] private float standoffHeight = 16f;
+    [SerializeField] private float orbitRadius = 7f;
+    [SerializeField] private float orbitDegreesPerSecond = 80f;
+    [SerializeField] private float wanderRadius = 13f;
+    [SerializeField] private float wanderDegreesPerSecond = 22f;
+    [SerializeField] private float surfaceClearance = 5f;
+    [SerializeField] private float shieldClearance = 5f;
+
+    [Header("Separation")]
+    [SerializeField] private float separationRadius = 9f;
 
     [Header("Attack")]
-    [SerializeField] private float attackRange = 30f;       // max distance to base at which the drone can attack
+    [SerializeField] private float attackRange = 30f;
     [SerializeField] private float attackDamage = 5f;
     [SerializeField] private float attackInterval = 1.5f;
     [SerializeField] private string attackSoundKey;
@@ -33,7 +39,7 @@ public class DroneController : MonoBehaviour
 
     [Header("Refs")]
     [SerializeField] private Life life;
-    [SerializeField] private NavMeshAgent agent;            // disabled at runtime; we fly manually in 3D space
+    [SerializeField] private NavMeshAgent agent;
     [SerializeField] private Drop drop;
     [SerializeField] private EnemyRandomizator randomizator;
 
@@ -54,7 +60,13 @@ public class DroneController : MonoBehaviour
     {
         if (life == null) life = GetComponent<Life>();
         if (agent == null) agent = GetComponent<NavMeshAgent>();
-        if (agent != null) agent.enabled = false;           // flight is manual, NavMesh would fight it
+        if (agent != null) agent.enabled = false;
+        All.Add(this);
+    }
+
+    private void OnDestroy()
+    {
+        All.Remove(this);
     }
 
     private void Start()
@@ -73,23 +85,19 @@ public class DroneController : MonoBehaviour
                 GameObject a = GameObject.FindGameObjectWithTag(aimTag);
                 if (a != null) aimOverride = a.transform;
             }
-            catch (UnityException) { }                       // tag not defined — fall back to target
+            catch (UnityException) { }
         }
 
-        if (target == null)
-            Debug.LogWarning($"[DroneController] {name}: target not found by tag '{targetTag}'");
-
-        // the shield dome carries a ForceShield component + collider; use it to push drones out of the dome
         ForceShield shield = FindObjectOfType<ForceShield>();
         if (shield != null) shieldCollider = shield.GetComponent<Collider>();
 
-        // start the orbit from whatever side the drone spawned, so multiple drones spread out
-        Transform aim = aimOverride != null ? aimOverride : target;
-        if (aim != null)
-        {
-            Vector3 flat = transform.position - aim.position;
-            orbitAngle = Mathf.Atan2(flat.z, flat.x) * Mathf.Rad2Deg;
-        }
+        orbitAngle = Random.Range(0f, 360f);
+        wanderAngle = Random.Range(0f, 360f);
+        standoffHeight *= Random.Range(0.85f, 1.25f);
+        orbitRadius *= Random.Range(0.8f, 1.3f);
+        wanderRadius *= Random.Range(0.8f, 1.3f);
+        if (Random.value < 0.5f) orbitDegreesPerSecond = -orbitDegreesPerSecond;
+        if (Random.value < 0.5f) wanderDegreesPerSecond = -wanderDegreesPerSecond;
 
         if (randomizator != null) randomizator.Randomize();
         if (life != null) life.OnDie.AddListener(Die);
@@ -99,24 +107,19 @@ public class DroneController : MonoBehaviour
     {
         if (dead || GlobalContext.Pause || target == null) return;
 
-        // aim follows the base every frame, so the drone tracks it even as the asteroid rotates/moves
         Transform aim = aimOverride != null ? aimOverride : target;
         Vector3 center = aim.position;
 
-        // everything is computed relative to the planet center, so it stays correct under 3-axis spin
         MeshCollider asteroid = GlobalContext.AsteriodCollider;
         Vector3 planetCenter = asteroid != null ? asteroid.bounds.center : center - Vector3.up;
-        Vector3 radialOut = (center - planetCenter).normalized;      // "up" direction at the base
+        Vector3 radialOut = (center - planetCenter).normalized;
         if (radialOut.sqrMagnitude < 0.001f) radialOut = Vector3.up;
 
-        // two axes spanning the plane tangent to the planet surface at the base
         Vector3 tangentA = Vector3.Cross(radialOut, Vector3.up);
         if (tangentA.sqrMagnitude < 0.01f) tangentA = Vector3.Cross(radialOut, Vector3.right);
         tangentA.Normalize();
         Vector3 tangentB = Vector3.Cross(radialOut, tangentA).normalized;
 
-        // orbit slot: a small fast loop whose center itself drifts around a larger slow loop,
-        // so the drone sweeps a whole disk above the base instead of one fixed circle
         orbitAngle += orbitDegreesPerSecond * Time.deltaTime;
         wanderAngle += wanderDegreesPerSecond * Time.deltaTime;
         float a = orbitAngle * Mathf.Deg2Rad;
@@ -127,11 +130,11 @@ public class DroneController : MonoBehaviour
 
         transform.position = Vector3.MoveTowards(transform.position, orbitSlot, moveSpeed * Time.deltaTime);
 
-        // safety net: never sink into the asteroid or the shield dome
+        ResolveSeparation();
+
         PushOutOf(asteroid, surfaceClearance);
         PushOutOf(shieldCollider, shieldClearance);
 
-        // belly toward the planet center: up = outward normal at the drone, nose toward the base
         Vector3 up = (transform.position - planetCenter).normalized;
         if (up.sqrMagnitude < 0.001f) up = Vector3.up;
         Vector3 forward = Vector3.ProjectOnPlane(center - transform.position, up);
@@ -141,8 +144,6 @@ public class DroneController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * turnSpeed);
         }
 
-        // engaged = the drone has reached the shield (hugging it). This is independent of dome size,
-        // so it works no matter how big the shield is. Falls back to base distance if no shield.
         bool engaged;
         if (shieldCollider != null)
         {
@@ -161,7 +162,19 @@ public class DroneController : MonoBehaviour
         }
     }
 
-    // keep the drone at least 'clearance' units away from the given collider's surface
+    private void ResolveSeparation()
+    {
+        for (int i = 0; i < All.Count; i++)
+        {
+            DroneController other = All[i];
+            if (other == null || other == this) continue;
+            Vector3 diff = transform.position - other.transform.position;
+            float d = diff.magnitude;
+            if (d < separationRadius && d > 0.0001f)
+                transform.position += (diff / d) * (separationRadius - d) * 0.5f;
+        }
+    }
+
     private void PushOutOf(Collider col, float clearance)
     {
         if (col == null) return;
@@ -196,10 +209,10 @@ public class DroneController : MonoBehaviour
         Destroy(gameObject, despawnDelay);
     }
 
-    // called by WaveManager to scale difficulty per wave
-    public void Configure(float damageMultiplier, float speedMultiplier)
+    public void Configure(float damageMultiplier, float speedMultiplier, float hpMultiplier)
     {
         attackDamage *= damageMultiplier;
         moveSpeed *= speedMultiplier;
+        if (life != null) life.SetMaxHP(life.MaxHP * hpMultiplier);
     }
 }

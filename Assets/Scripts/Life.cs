@@ -30,6 +30,13 @@ public class Life : MonoBehaviour
 		}
 	}
 
+	public void SetMaxHP(float value)
+	{
+		_maxHP = value;
+		_currentHP = value;
+		_onChangeValue.Invoke(_currentHP);
+	}
+
 	public void FullHeal()
 	{
 		_currentHP = _maxHP;
