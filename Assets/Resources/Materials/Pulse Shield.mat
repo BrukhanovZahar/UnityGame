@@ -94,7 +94,7 @@ Material:
     - _Texture_Opacity_Full: 0
     - _Texture_Strength: 1
     - _Threshold: 0.236
-    - _WaweSpeed: 14.660767
+    - _WaweSpeed: 13.823008
     m_Colors:
     - _Color: {r: 0, g: 0.46740404, b: 2.670157, a: 0}
     - _Color_1: {r: 2.811218, g: 0, b: 2.9960785, a: 0}

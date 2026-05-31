@@ -5,6 +5,8 @@ TagManager:
   serializedVersion: 2
   tags:
   - Drop
+  - Base
+  - BaseAim
   layers:
   - Default
   - TransparentFX
@@ -14,8 +16,8 @@ TagManager:
   - UI
   - Targetable
   - Bullet
-  - 
-  - 
+  - Enemy
+  - NavOnly
   - 
   - 
   - 

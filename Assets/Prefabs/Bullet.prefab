@@ -75,7 +75,7 @@ MonoBehaviour:
   startImpulse: 250
   mask:
     serializedVersion: 2
-    m_Bits: 64
+    m_Bits: 320
 --- !u!33 &6102563074154651789
 MeshFilter:
   m_ObjectHideFlags: 0
